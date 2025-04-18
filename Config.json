@@ -1,0 +1,66 @@
+{
+    "customerprofile": "\n提出这个问题的客户关键信息如下：中国沈阳的200人制造企业，主要生产机器人零部件，包括轴承，电机等，当前处于企业发展的高速增长期，在人力资源方面主要面临的挑战在于希望提升核心团队稳定性，以及提升总体薪酬的投入产出比。",
+    "methodologies": ["Alice", "Bob", "Charlie"],
+    "question_analyze_system_prompt": "请你扮演中小企业 HR consultant, 为50-300人的制造业中小企业主提供HR领域的咨询服务,始终使用中文回答。",
+    "question_analyze_methodology": [""],
+    "question_analyze_result_content": 
+        ["\n请确保回复符合下述内容要求：",
+        "\n 1. 内容输出为JSON格式，所有拆解的信息以 JSON 节点的方式返回，",
+        "\n 2. JSON 根节点名为root，所有返回的信息均保存在根节点的子节点，",
+        "\n 3. 总述节点：节点名和节点编号为1，",
+        "\n 4. 分析领域节点：节点名和节点编号例 1.1， 1.2, 1.3 ... 。父节点编号为 1.",
+        "\n 5. 分析任务节点：节点名和节点编号例 1.1.1，1.1.2，1.1.3 ... 。父节点编号为 1.1， 1.2, 1.3 ... 。",
+        "\n 6. 节点编号和父节点编号之间的关系为：父节点编号+‘.’+子节点编号，",
+        "\n 7. 通过 节点编号 和 父节点编号 体现 总述-分析领域-分析任务之间的对应关系"],
+    "question_analyze_result_requirement": 
+        ["\n请遵照下述要求进行分析：",
+        "\n  1.请把客户问题记录为1个总述，将1个总述拆解成2个分析领域，每个分析领域再拆解为2个分析方法，请返回分析领域和分析方法信息;",
+        "\n  2.客户提供了下述企业数据文件，请优先选择可以高效利用下述数据的分析领域和分析方法：",
+        "{customer_CSV_files} , {customer_PDF_files} 。\n\n"],
+    "question_analyze_prompt_template": 
+        ["请帮助把下面关于制造业中小企业HR的问题，拆解成分析领域和分析步骤。问题内容是：“{question}”。",
+        "{customerprofile}",
+        "{question_analyze_result_content}",
+        "\n请基于下述方法论分析：{question_analyze_methodology}\n",
+        "{question_analyze_result_requirement}",
+        "{question_analyze_result_format}"],
+    "question_analyze_result_format": 
+        ["\n 每一个分析领域或分析方法是一个JSON node，每一个 JSON node 格式下述属性：\n",
+        "节点名称，", 
+        "节点类型（分析领域或是分析方法），", 
+        "分析目标，", 
+        "分析方法，",
+        "对应的企业数据文件名,",
+        "分析结果的建议格式，",
+        "如何评判分析结果是否完整，",
+        "分析结果内容的参考样例，",
+        "节点编号,",
+        "父节点编号,",
+        "状态,",
+        "输出,",
+        "备注。"],
+    "customer_CSV_files":[
+        {
+            "file_path": "绩效考核.CSV",  
+            "file_description": "绩效考核"  
+        },
+        {
+            "file_path": "2024年薪酬总表.CSV",  
+            "file_description": "2024年薪酬总表"  
+        }
+    ],
+    "customer_PDF_files":[
+        {
+            "file_path": "考勤制度.pdf",  
+            "file_description": "考勤制度1"  
+        },
+        {
+            "file_path": "考勤制度2.pdf",  
+            "file_description": "考勤制度2"  
+        },
+        {
+            "file_path": "年奖制度.pdf",  
+            "file_description": "年奖制度"  
+        }
+    ]
+}
