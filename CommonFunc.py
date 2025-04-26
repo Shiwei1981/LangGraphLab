@@ -1,263 +1,292 @@
+import logging
 import json
-import os
 from typing import List
 from langchain_openai import AzureChatOpenAI
-import xml.etree.ElementTree as ET 
 from typing import Annotated
 from typing_extensions import TypedDict
 from langgraph.graph.message import AnyMessage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
-import operator
-from typing import TypedDict, Annotated, Union, Optional,Type,List
+from typing import TypedDict, Annotated,List
 from IPython.display import Image, display
 from langgraph.graph.message import add_messages
 import time
+from MCPClientManager import mcp_init_and_process_query
+import asyncio
+from StaticVar import api_key, endpoint, api_version, model_name, model_name_emb, model_name_reasoning, model_name_reasoning_mini
+from StaticVar import cal_toten
+from StaticVar import get_para
+
+# 创建日志器  
+logger = logging.getLogger('my_logger')  
+logger.setLevel(logging.DEBUG)  # 设置日志器的日志级别  
+  
+# 创建文件处理器，并设置编码为 utf-8  
+file_handler = logging.FileHandler('app.log', encoding='utf-8')  
+file_handler.setLevel(logging.DEBUG)  # 设置文件处理器的日志级别  
+  
+# 创建格式化器  
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  
+file_handler.setFormatter(formatter)  # 将格式化器应用到文件处理器  
+  
+# 将文件处理器添加到日志器  
+logger.addHandler(file_handler)  
 
 
-def get_para(paraname: str) -> str:  
-    try:  
-        # 尝试打开 config.json 文件  
-        with open('config.json', encoding='utf-8') as config_file:  
-            config_data = json.load(config_file)  
-    except FileNotFoundError:  
-        raise Exception("Config file 'config.json' not found.")  
-    except json.JSONDecodeError:  
-        raise Exception("Error decoding JSON from 'config.json'.")  
-    except Exception as e:  
-        raise Exception(f"An unexpected error occurred: {e}")  
-    # 检查参数是否存在于配置数据中  
-    if paraname not in config_data:  
-        raise Exception("Can't find value in config.json")  
-    result = config_data[paraname]  
-    # 如果值为 None 或者空字符串，也抛出异常  
-    if result is None or result == "":  
-        raise Exception("Value in config.json is empty or None")  
-    
-    return result  
+# langgraph 状态总是不对，怀疑是并发问题，加一个状态锁
+state_json_task_status_lock = "release"
 
-"""
-messages=[
-        {
-            "role": "system",
-            "content": "You are a helpful assistant.",
-        },
-        {
-            "role": "user",
-            "content": "I am going to Paris, what should I see?",
-        },
-        {
-            "role": "assistant",
-            "content": "Paris, the capital of France, is known for its stunning architecture, art museums, historical landmarks, and romantic atmosphere. Here are some of the top attractions to see in Paris:\n \n 1. The Eiffel Tower: The iconic Eiffel Tower is one of the most recognizable landmarks in the world and offers breathtaking views of the city.\n 2. The Louvre Museum: The Louvre is one of the world's largest and most famous museums, housing an impressive collection of art and artifacts, including the Mona Lisa.\n 3. Notre-Dame Cathedral: This beautiful cathedral is one of the most famous landmarks in Paris and is known for its Gothic architecture and stunning stained glass windows.\n \n These are just a few of the many attractions that Paris has to offer. With so much to see and do, it's no wonder that Paris is one of the most popular tourist destinations in the world.",
-        },
-        {
-            "role": "user",
-            "content": "What is so great about #1?",
-        }
-    ],
-"""
+env={
+        "AZURE_OPENAI_API_KEY":api_key,
+        "AZURE_OPENAI_ENDPOINT":endpoint,
+        "AZURE_OPENAI_API_VERSION":api_version,
+        "AZURE_OPENAI_MODEL_NAME":model_name,
+        "AZURE_OPENAI_MODEL_NAME_EMB":model_name_emb        
+    } 
+
 def LLM_Prompt_question_analyze(messages: List[str]) -> str:
-    api_key = os.getenv("AZURE_OPENAI_API_KEY")  
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")  
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-    model_name = os.getenv("AZURE_OPENAI_MODEL_NAME") 
-    model_name = "o3-mini" 
     model = AzureChatOpenAI(
         api_key=api_key,
         azure_endpoint=endpoint,
         api_version=api_version,
-        model=model_name,
-        temperature=1
-    )    
+        model=model_name_reasoning
+    )
     response = model.invoke(messages)
+    contents = [message.content for message in messages]  
+    prompt_str = "".join(contents)  
+    cal_toten(model_name = model_name_reasoning, prompt_str=prompt_str, output = response.content)
     return response.content
 
 def LLM_Prompt_task_execute(messages: List[str]) -> str:
-    api_key = os.getenv("AZURE_OPENAI_API_KEY")  
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")  
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-    model_name = os.getenv("AZURE_OPENAI_MODEL_NAME") 
-    model_name = "gpt-4" 
     model = AzureChatOpenAI(
         api_key=api_key,
         azure_endpoint=endpoint,
         api_version=api_version,
         model=model_name,
-        max_tokens=4096,
-        temperature=0.7
+        temperature=0
     )    
     response = model.invoke(messages)
+    contents = [message.content for message in messages]  
+    prompt_str = "".join(contents)  
+    cal_toten(model_name = model_name_reasoning, prompt_str=prompt_str, output = response.content)
     return response.content
 
 def LLM_Prompt_outcome_summarize(messages: List[str]) -> str:
-    api_key = os.getenv("AZURE_OPENAI_API_KEY")  
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")  
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-    model_name = os.getenv("AZURE_OPENAI_MODEL_NAME") 
-    model_name = "gpt-4" 
     model = AzureChatOpenAI(
         api_key=api_key,
         azure_endpoint=endpoint,
         api_version=api_version,
         model=model_name,
-        max_tokens=4096,
-        temperature=0.7
+        temperature=0
     )    
     response = model.invoke(messages)
+    contents = [message.content for message in messages]  
+    prompt_str = "".join(contents)  
+    cal_toten(model_name = model_name_reasoning, prompt_str=prompt_str, output = response.content)
     return response.content
-
-def langgraph_task_execute() -> str:
-    return "langgraph_task_execute"
-
-def langgraph_construct() -> str:
-    return "langgraph_construct"
-
-def xml_json(xml_data):
-    # 解析 XML 数据
-    root = ET.fromstring(xml_data)
-
-    # 创建一个空的字典来存储 JSON 数据
-    json_data = {}
-
-    # 遍历 XML 元素并将其转换为字典
-    for child in root:
-        json_data[child.tag] = child.text
-
-    return json_data
-
-"""
-def compare_sequence_numbers(seq_num1, seq_num2):  
-    
-    比较两个节点编号的大小  
-  
-    :param seq_num1: 第一个节点编号 (字符串)  
-    :param seq_num2: 第二个节点编号 (字符串)  
-    :return:   
-        - 1: seq_num1 大于 seq_num2  
-        - -1: seq_num1 小于 seq_num2  
-        - 0: seq_num1 等于 seq_num2  
-      
-    # 将节点编号分割成整数元组  
-    tuple1 = tuple(map(int, seq_num1.split('.')))  
-    tuple2 = tuple(map(int, seq_num2.split('.')))  
-  
-    # 比较元组  
-    if tuple1 > tuple2:  
-        return 1  
-    elif tuple1 < tuple2:  
-        return -1  
-    else:  
-        return 0  
-"""
 
 class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
+    messages_history: Annotated[list[AnyMessage], add_messages]
     tasks_json: dict
+    questioin: str
 
 def node_task(state: AgentState):
     ##首先决定做哪一个task，寻找第一个状态是 "待分析" 的 task
-    task_json = find_first_todo_task(state["tasks_json"])
-    task_str = json.dumps(task_json, ensure_ascii=False)
-    task_json["状态"] = "开始执行"  
-    time.sleep(5)
-    task_json["输出"] = "分析已完成，结果已记录" 
-    task_json["状态"] = "完成"  
-    return {"messages": HumanMessage(task_str)}
+    global state_json_task_status_lock
+    while True:
+        # 查一下锁
+        if state_json_task_status_lock == "release":
+            state_json_task_status_lock = "lock"
+            task_str = ""
+            last_assistant_str = ""
+            task_json = find_first_todo_task(state["tasks_json"])
+            
+            #trace
+            logger.info("进入节点执行，当前节点是 {nodeid} \n".format(nodeid=task_json["Metadata-节点编号"]))
+            
+            if task_json is None:
+                raise ValueError("出现了异常，节点开始执行，但是，JSON 中并没有找到 “待分析”的节点")
+            try:
+                if task_json["Metadata-节点类型"] == "分析方法":
+                    task_json["Metadata-状态"] = "开始执行"  
+                    #task_str = json.dumps(task_json, ensure_ascii=False)
+                    task_str = generate_task_prompt_from_JSON(task_json, task_json["Metadata-节点类型"], question=state["questioin"])
+                    messages =  asyncio.run(mcp_init_and_process_query(task_str))
+                    for message in messages:  
+                        if message["role"] == "assistant":  
+                            last_assistant_str = message["content"]  
+                elif (task_json["Metadata-节点类型"] == "分析领域") or (task_json["Metadata-节点类型"] == "总述"):
+                    ##首先决定做哪一个task，寻找第一个状态是 "待分析" 的 task
+                    task_json["Metadata-状态"] = "开始总结"  
+                    previouse_outputs = ""
+                    for node in state["tasks_json"]["root"]:
+                        if node['Metadata-父节点编号'] == task_json["Metadata-节点编号"]:  
+                            previouse_outputs = previouse_outputs + "\n\n --- \n" + node['输出']
+                    summary_prompt_str = generate_summary_prompt_from_JSON(
+                        question=state["questioin"],
+                        previouse_messages_str=previouse_outputs
+                    )
+                    messages = [HumanMessage(summary_prompt_str)]
+                    LLM = AzureChatOpenAI(
+                        api_key=api_key,
+                        api_version=api_version,
+                        azure_endpoint=endpoint,
+                        azure_deployment=model_name
+                    )
+                    response = LLM.invoke(messages)
+                    last_assistant_str = response.content
+                else:
+                    task_str = "未正确获取task指令内容,指令类型是：" + task_json["Metadata-状态"]
+                    last_assistant_str = " 状态错误-exception 了 "
+            finally:
+                task_json["输出"] = last_assistant_str
+                task_json["Metadata-状态"] = "完成"  
+                state["messages_history"].append(HumanMessage(task_str))
+                state["messages_history"].append(AIMessage(last_assistant_str))
+                state_json_task_status_lock = "release"
 
-def node_summary(state: AgentState):
-    ##首先决定做哪一个task，寻找第一个状态是 "待分析" 的 task
-    task_json = find_first_todo_summary(state["tasks_json"])
-    task_str = json.dumps(task_json, ensure_ascii=False)
-    task_json["状态"] = "完成"  
-    task_json["输出"] = "总结已完成，结果已记录" 
-    return {"messages": HumanMessage(task_str)}
-
-## 寻找可以开始总结的领域。检查是否存在 task 都完成的领域，如果存在，修改该领域的 状态为待开始，并返回 "go"
-def is_there_todo_summary(data) -> str:  
-    # 如果节点有子节点，递归遍历  
-    result = "wait"
-    # 创建一个字典来保存节点编号和对应节点信息  
-    nodes = {item['节点编号']: item for item in data['root']}  
-      
-    # 遍历每个节点  
-    for item in data['root']:  
-        node_id = item['节点编号']
-          
-        # 获取所有子节点  
-        children = [child for child in data['root'] if child['父节点编号'] == node_id]  
-        # 检查所有子节点的状态  
-        if all(child['状态'] == '完成' for child in children):  
-            # 返回父节点信息                  
-            if nodes[node_id]['状态'] == '等待':
-                nodes[node_id]['状态'] = '待总结'
-                result = "go"
-                break
-    return result
+                # 为什么这里要 sleep? 测试了很长时间，发现如果 graph 采用深度优先遍历，则总是不执行节点1。
+                # 只能增加一个 sleep，增加了之后，结合锁的sleep 时间，就手动调整了 广度优先 遍历，结果就好了。
+                # 说实话，没搞懂为什么
+                time.sleep(2)
+                return
+        else:
+            time.sleep(0.5)
 
 # 查找第一个 "状态": "待分析" 的节点及其上级节点  
 def find_first_todo_task(data):  
-    if data.get("状态") == "待分析":  
-        return data  # 返回当前节点（根节点）  
-      
-    for child in data.get("root", []):  
-        result = find_first_todo_task(child)  
-        if result:  
-            return result  # 返回找到的子节点  
+    for child in data["root"]:  
+        if child["Metadata-状态"] == "待分析":  
+            return child  # 返回当前节点（根节点）
     return None  
 
-# 查找第一个 "状态": "待分析" 的节点及其上级节点  
-def find_first_todo_summary(data):  
-    if data.get("状态") == "待总结":  
-        return data  # 返回当前节点（根节点）  
-      
-    for child in data.get("root", []):  
-        result = find_first_todo_summary(child)  
-        if result:  
-            return result  # 返回找到的子节点  
-    return None 
+## 寻找可以开始总结的领域。检查是否存在 子task 都完成的task，如果存在，状态为 待分析，并返回 "go"
+def check_task_status(state: AgentState):  
+    global state_json_task_status_lock
+    result = "wait"
+    while True:
+        # 全都锁起来！
+        if ((state_json_task_status_lock == "release")):
+            state_json_task_status_lock = "lock"
+            try:
+                #trace
+                completed_nodes = []
+                for node in state["tasks_json"]['root']:  
+                    if node["Metadata-状态"] == "完成":  
+                        completed_nodes.append(node["Metadata-节点编号"]) 
+                result_string = ', '.join(completed_nodes) 
+                logger.info("进入节点寻找，此时JSON中完成的节点是： {node_numbers} \n".format(node_numbers=result_string))
+                
+                # 如果节点有子节点，递归遍历  
+                # 创建一个字典来保存节点编号和对应节点信息  
+                nodes = {item['Metadata-节点编号']: item for item in state["tasks_json"]['root']}  
+                
+                # 遍历每个节点  
+                for item in state["tasks_json"]['root']:  
+                    node_id = item['Metadata-节点编号']
+                    
+                    # 获取所有子节点  
+                    children = [child for child in state["tasks_json"]['root'] if child['Metadata-父节点编号'] == node_id]  
+                    # 检查所有子节点的状态  
+                    if all(child['Metadata-状态'] == '完成' for child in children):  
+                        logger.info("找到子节点全完成的节点。次节点是：{nodeid} 此节点的状态是 {status} \n".format(nodeid=node_id, status=nodes[node_id]['Metadata-状态']))
+                        # 返回父节点信息                  
+                        if nodes[node_id]['Metadata-状态'] == '等待':
+                            nodes[node_id]['Metadata-状态'] = '待分析'
+                            result = "go"
+                            break
+            finally:
+                state_json_task_status_lock = "release"
+                #trace
+                if result == "wait":
+                    logger.info("没有找到合适的节点，转向 END \n")
+                return result
+        else:
+            time.sleep(2)
 
-def check_summary_status(state: AgentState):
-    """check if content ready"""
-    result = is_there_todo_summary(state["tasks_json"])
-    return result
-
-def generate_graph(question_analyze_response_json) -> dict:
+def generate_graph(question_analyze_response_json, question: str) -> dict:
     graph_builder = StateGraph(AgentState)
-    ##start_node = graph_builder.add_node(START, node_start, "start")
-    ##end_node = graph_builder.add_node(END, node_summary, "end")
-    
 
     for node in question_analyze_response_json["root"]:  
-        node_id = node["节点编号"]  
-        node_type = node["节点类型"]  
-        parent_id = node["父节点编号"]  
-        node["状态"] = "待分析"
+        node_id = node["Metadata-节点编号"]  
+        node_type = node["Metadata-节点类型"]  
+        parent_id = node["Metadata-父节点编号"]          
         node["输出"] = ""
+        node["Metadata-状态"] = "等待"  
+        graph_builder.add_node(node_id, node_task)
 
+        #如果是节点1，则添加 与 END的关系
         if node_id == "1":
-            graph_builder.add_node(node_id, node_summary) 
             graph_builder.add_edge(node_id, END)
-            node["节点类型"] = "分析领域"
-            node["状态"] = "等待"  
-            continue
+            
+        #判空
+        node["Metadata-子节点编号"] = node["Metadata-子节点编号"].lower()
+        node["Metadata-父节点编号"] = node["Metadata-父节点编号"].lower()
+        if node["Metadata-子节点编号"] == "null":
+            node["Metadata-子节点编号"] = ""
+        if node["Metadata-父节点编号"] == "null":
+            node["Metadata-父节点编号"] = ""
 
-        if node_type == "分析领域":
-            graph_builder.add_node(node_id, node_summary) 
-            node["状态"] = "等待"
-        
-        if node_type == "分析方法":
-            graph_builder.add_node(node_id, node_task)
+        #如果有父节点，则添加与父节点的关系
+        if not node["Metadata-父节点编号"] == "":
+            graph_builder.add_conditional_edges(node_id, check_task_status, {"go": parent_id, "wait": END})
+            logger.info("添加了edge，{nodeid} - {pid} \n".format(nodeid=node_id, pid = parent_id))
+
+        #没有子节点，则加一个 start-> node，再加一个 conditional 的 node->parent 或 end
+        if node["Metadata-子节点编号"] == "":
+            #添加与 Start 节点的关系
             graph_builder.add_edge(START, node_id)
-        
-        graph_builder.add_conditional_edges(node_id, check_summary_status, {"go": parent_id, "wait": END})
+            #没有子节点的节点，立刻启动，其他所有情况都 等待
+            node["Metadata-状态"] = "待分析"
+            
 
     graph = graph_builder.compile()
 
     ##display(Image(graph.get_graph().draw_mermaid_png()))
-    initial_state = {"messages": [], "tasks_json": question_analyze_response_json}
+    initial_state = {"messages": [], "tasks_json": question_analyze_response_json, "questioin": question, "messages_history": []}
 
     print(graph.get_graph().draw_mermaid())
+
+    #trace
+    logger.info(graph.get_graph().draw_mermaid())
 
     graph.invoke(initial_state)
 
     return initial_state
+
+def generate_task_prompt_from_JSON(node_json: dict, node_type: str, question:str) -> str:
+    customer_profile=get_para("customerprofile")
+    #return_str = ""
+    task_json = dict()
+    for key in node_json.keys():
+        if not key.startswith("Metadata-"): 
+            task_json[key] = node_json[key]
+    task_str = json.dumps(task_json, ensure_ascii=False, indent=4)
+    prompt_template_str = ''.join(get_para("taks_execution_prompt_template"))
+    prompt_str = prompt_template_str.format(
+        question=question, 
+        customer_profile=customer_profile,
+        task=task_str
+        )
+    return prompt_str
+
+def generate_summary_prompt_from_JSON(question:str, previouse_messages_str:str) -> str:
+    taks_summary_prompt_template = get_para("taks_summary_prompt_template")
+    taks_summary_prompt_template_str = ''.join(taks_summary_prompt_template)
+    customer_profile=get_para("customerprofile")    
+    prompt_str = taks_summary_prompt_template_str.format(
+        question=question, 
+        customer_profile=customer_profile,
+        task_results=previouse_messages_str
+        )
+    return prompt_str
+
+def quick_query(question:str):      
+    prompt_template_str = get_para("quick_query_prompt_template")
+    messages =  asyncio.run(mcp_init_and_process_query(prompt_template_str.format(question=question)))
+    last_assistant_str = ""
+    for message in messages:  
+        if message["role"] == "assistant":  
+            last_assistant_str = message["content"]   
+    return last_assistant_str
